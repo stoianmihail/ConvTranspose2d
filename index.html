@@ -1,167 +1,206 @@
 <!DOCTYPE html>
 <html>
+  <head>
+    <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/4.0.0/css/bootstrap.min.css" integrity="sha384-Gn5384xqQ1aoWXA+058RXPxPg6fy4IWvTNh0E263XmFcJlSAwiGgFAW/dAiS6JXm" crossorigin="anonymous">
+  </head>
 <body>
-  
-<form>  
-  <label>Initial image size: </label><input type="text" id="x_0"><br>  
-  <label>Final image size: </label><input type="text" id="x_n"><br>
-  <label>Number of convolution layers: </label><input type="text" id="levels"><br>
-  <label>(Optional) Min. padding: </label><input type="text" id="padding" value="0"><br>
-  <label>(Optional) Max. kernel size: </label><input type="text" id="kernel" value="11"><br>
-  <button id="compute">Compute</button><br>
-  <label>Result:</label><br>
-  <output id="result"></output>
-</form>
+  <div class="container">
+    <center><h3 style="margin-top: 50px;">Automatized search for ConvTranspose2d parameters</h3></center>
+    <center><h6>(helpful for Semantic Segmentation tasks)</h6></center>
+    <form>
+      <div class="form-group">
+        <label for="x_0">Initial image size (px) - coming, e.g., from the output of the pretrained model:</label>
+        <input type="text" class="form-control" id="x_0" placeholder="20" >
+      </div>
+      <div class="form-group">
+        <label for="x_n">Final image size (px):</label>
+        <input type="text" class="form-control" id="x_n" placeholder="240">
+      </div>
+      <div class="form-group">
+        <label for="layers">Number of convolution layers:</label>
+        <input type="text" class="form-control" id="layers" placeholder="2">
+      </div>
+      <div class="form-group">
+        <label for="padding">(Optional) Min. padding: </label>
+        <input type="text" class="form-control" id="padding" value="0" aria-describedby="">
+      </div>
+      
+      <div class="form-group">
+        <label for="kernel">(Optional) Max. kernel size: </label>
+        <input type="text" class="form-control" id="kernel" value="11" aria-describedby="">
+      </div>
+    
+      <button id="compute" type="submit" class="btn btn-success">Compute</button>
+      <div class="form-group" style="margin-top: 25px;">
+        <output id="result"></output>
+      </div>
+    </form>
+  </div>
+  <script>
+    function compute(maxLevel, x_0, x_n, padding, maxKernelSize) {
+      function rec(x, state={}, level=maxLevel) {
+        // Check the image size remains valid.
+        if (x < 1)
+          return [false, state];
 
-<script>
-  function compute(maxLevel, x_0, x_n, padding, maxKernelSize) {
-    function rec(x, state={}, level=maxLevel) {
-      // Check the image size remains valid.
-      if (x < 1)
-        return [false, state];
-
-      // Update the state.
-      state[`x_${1 + level}`] = x;
-      function debugLevel() {
-        return '[' + '*'.repeat(level) + '] ';
-      }
-
-      // Initial level?
-      if (!level) {
-        let found = false;
-        for (let k = 1; k <= maxKernelSize && !found; ++k) {
-          for (let p = padding; p <= k && !found; ++p) {
-            let rem = (state[`x_1`] - 1 - k + 2 * p);
-            if (rem <= 0) continue;
-            if (rem % (x_0 - 1) !== 0) continue;
-            let s = rem / (x_0 - 1);
-            if (s > k) continue;
-            state[`s_0`] = s;
-            state[`k_0`] = k;
-            state[`p_0`] = p;
-
-            // And complete the basic parameters as well.
-            state[`a_0`] = s;
-            state[`b_0`] = state[`x_1`] - s * x_0;
-            found = true;
-          }
+        // Update the state.
+        state[`x_${1 + level}`] = x;
+        function debugLevel() {
+          return '[' + '*'.repeat(level) + '] ';
         }
-        return [found, state];
-      }
 
-      // Otherwise, find suitable parameters.
-      // The range covers: -s - 2 * p + k + 1.
-      for (let b = maxKernelSize; b >= 1 - 2 * maxKernelSize; --b) {
-        state[`b_${level}`] = b;
-
-        // Find suitable `a`.
-        for (let a = 2; a <= Math.min(maxKernelSize, (x - b)); ++a) {
-          if ((x - b) % a !== 0) continue;
-          let new_x = (x - b) / a;
-
-          // Check whether this is viable.
-          let rem = x - a * (new_x - 1);
+        // Initial level?
+        if (!level) {
           let found = false;
-          for (let k = a; k <= maxKernelSize && !found; ++k) {
-            let p_2 = -(rem - k - 1);
-            if (p_2 % 2 !== 0) continue;
-            let p = p_2 / 2;
-            if ((p < padding) || (p > k)) continue;
-            state[`s_${level}`] = a;
-            state[`k_${level}`] = k;
-            state[`p_${level}`] = p;
-            found = true;
+          for (let k = 1; k <= maxKernelSize && !found; ++k) {
+            for (let p = padding; p <= k && !found; ++p) {
+              let rem = (state[`x_1`] - 1 - k + 2 * p);
+              if (rem <= 0) continue;
+              if (rem % (x_0 - 1) !== 0) continue;
+              let s = rem / (x_0 - 1);
+              if (s > k) continue;
+              state[`s_0`] = s;
+              state[`k_0`] = k;
+              state[`p_0`] = p;
+
+              // And complete the basic parameters as well.
+              state[`a_0`] = s;
+              state[`b_0`] = state[`x_1`] - s * x_0;
+              found = true;
+            }
           }
-          if (!found) continue;
-          
-          // And propagate.
-          state[`a_${level}`] = a;
-          let prop = rec(new_x, state, level - 1);
-          if (prop[0]) return prop;
+          return [found, state];
         }
+
+        // Otherwise, find suitable parameters.
+        // The range covers: -s - 2 * p + k + 1.
+        for (let b = maxKernelSize; b >= 1 - 2 * maxKernelSize; --b) {
+          state[`b_${level}`] = b;
+
+          // Find suitable `a`.
+          for (let a = 2; a <= Math.min(maxKernelSize, (x - b)); ++a) {
+            if ((x - b) % a !== 0) continue;
+            let new_x = (x - b) / a;
+
+            // Check whether this is viable.
+            let rem = x - a * (new_x - 1);
+            let found = false;
+            for (let k = a; k <= maxKernelSize && !found; ++k) {
+              let p_2 = -(rem - k - 1);
+              if (p_2 % 2 !== 0) continue;
+              let p = p_2 / 2;
+              if ((p < padding) || (p > k)) continue;
+              state[`s_${level}`] = a;
+              state[`k_${level}`] = k;
+              state[`p_${level}`] = p;
+              found = true;
+            }
+            if (!found) continue;
+            
+            // And propagate.
+            state[`a_${level}`] = a;
+            let prop = rec(new_x, state, level - 1);
+            if (prop[0]) return prop;
+          }
+        }
+
+        return [false, state];
       }
 
-      return [false, state];
-    }
-
-    let ret = rec(x_n);
-    if (ret[0] === false) {
-      alert('Invalid input! Reason: "ret[0] === false".');
-      return;
-    }
-
-    let state = ret[1];
-    let new_x = x_0;
-    console.log(state);
-
-    // Basic verification.
-    for (let l = 0; l <= maxLevel; ++l) {
-      console.log('l=' + l + ' a=' + state[`a_${l}`] + ' b=' + state[`b_${l}`]);
-      new_x = state[`a_${l}`] * new_x + state[`b_${l}`];
-      console.log('new_x=' + new_x);
-    }
-    if (new_x !== x_n) {
-      alert('Invalid input! Reason: basic verification failed.');
-      return;
-    }
-
-    function debug(s, l) {
-      ret = '';
-      for (const [key, value] of Object.entries(s)) {
-        if (key.endsWith(l)) {
-          ret += `${key}=${value} | `;
-        }
-      }
-      return ret;
-    }
-
-    // Final verification.
-    state[`x_0`] = x_0;
-    for (let l = 0; l <= maxLevel; ++l) {
-      console.log(debug(state, l));
-      let test_x = (state[`x_${l}`] - 1) * state[`s_${l}`] - 2 * state[`p_${l}`] + state[`k_${l}`] + 1;
-      console.log('l=' + l + ' test_x=' + test_x + ' x=' + state[`x_${l+1}`]); 
-      if (test_x !== state[`x_${l + 1}`]) {
-        alert('Invalid input! Reason: final verification failed.');
+      let ret = rec(x_n);
+      if (ret[0] === false) {
+        alert('Invalid input! Reason: "ret[0] === false".');
         return;
       }
+
+      let state = ret[1];
+      let new_x = x_0;
+      console.log(state);
+
+      // Basic verification.
+      for (let l = 0; l <= maxLevel; ++l) {
+        // console.log('l=' + l + ' a=' + state[`a_${l}`] + ' b=' + state[`b_${l}`]);
+        new_x = state[`a_${l}`] * new_x + state[`b_${l}`];
+        // console.log('new_x=' + new_x);
+      }
+      if (new_x !== x_n) {
+        alert('Invalid input! Reason: basic verification failed.');
+        return;
+      }
+
+      function debug(s, l) {
+        ret = '';
+        for (const [key, value] of Object.entries(s)) {
+          if (key.endsWith(l)) {
+            ret += `${key}=${value} | `;
+          }
+        }
+        return ret;
+      }
+
+      // Final verification.
+      state[`x_0`] = x_0;
+      for (let l = 0; l <= maxLevel; ++l) {
+        // console.log(debug(state, l));
+        let test_x = (state[`x_${l}`] - 1) * state[`s_${l}`] - 2 * state[`p_${l}`] + state[`k_${l}`] + 1;
+        if (test_x !== state[`x_${l + 1}`]) {
+          alert('Invalid input! Reason: final verification failed.');
+          return;
+        }
+      }
+
+      // Build up the result.
+      ret = [];
+      for (let l = 0; l <= maxLevel; ++l) {
+        let s = state[`s_${l}`];
+        let k = state[`k_${l}`];
+        let p = state[`p_${l}`];
+        let x_i = state[`x_${l + 1}`];
+        ret.push(
+          `<p>nn.ConvTranspose2d(_, _, kernel_size=${k}, stride=${s}, padding=${p}, dilation=1, output_padding=1), # Image size: ${x_i}</p>`
+        );
+      }
+
+      // Report the state.
+      document.getElementById('result').innerHTML = `<code>${ret.join('\n')}</code>`;
     }
 
-    // Build up the result.
-    ret = [];
-    for (let l = 0; l <= maxLevel; ++l) {
-      let s = state[`s_${l}`];
-      let k = state[`k_${l}`];
-      let p = state[`p_${l}`];
-      let x_i = state[`x_${l + 1}`];
-      ret.push(
-        `<p>nn.ConvTranspose2d(_, _, kernel_size=${k}, stride=${s}, padding=${p}, dilation=1, output_padding=1), # ${x_i}</p>`
-      );
-    }
+    document.getElementById('compute').addEventListener('click', e => {
+      e.preventDefault();
+      e.stopPropagation();
+      
+      let x_0 = parseInt(document.getElementById('x_0').value);
+      let x_n = parseInt(document.getElementById('x_n').value);
+      let num_layers = parseInt(document.getElementById('layers').value);
+      let padding = parseInt(document.getElementById('padding').value);
+      let kernel_size = parseInt(document.getElementById('kernel').value);
 
-    // Report the state.
-    document.getElementById('result').innerHTML = ret.join('\n');
-  }
+      function pretty(x) {
+        if (x == 1) return '1st';
+        else if (x == 2) return '2nd';
+        else if (x == 3) return '3rd';
+        else return `${x}th`;
+      }
 
-  document.getElementById('compute').addEventListener('click', e => {
-    e.preventDefault();
-    e.stopPropagation();
-    
-    let x_0 = parseInt(document.getElementById('x_0').value);
-    let x_n = parseInt(document.getElementById('x_n').value);
-    let padding = parseInt(document.getElementById('padding').value);
-    let kernel_size = parseInt(document.getElementById('kernel').value);
+      let fields = [x_0, x_n, num_layers, padding, kernel_size];
+      for (let index = 0; index !== fields.length; ++index) {
+        if (isNaN(fields[index])) {
+          alert(`You forget to complete the ${pretty(1 + index)} field!`);
+          return;
+        }
+      }
 
-    console.log('x_0=' + x_0 + ' x_n=' + x_n + ' padding=' + padding);
+      console.log('x_0=' + x_0 + ' x_n=' + x_n + ' padding=' + padding);
 
-    let num_levels = parseInt(document.getElementById('levels').value);
-    if (num_levels < 2) {
-      alert('The number of layers should be > 1!');
-      return;
-    }
-    compute(num_levels - 1, x_0, x_n, padding, kernel_size);
-  });
-</script>
-
+      if (num_layers <= 0) {
+        alert('The number of layers should be positive!');
+        return;
+      }
+      if (num_layers === 1) {
+        alert(`You selected ${num_layers} layers: in this case, make sure that the max. kernel size is large enough!`);
+      }
+      compute(num_layers - 1, x_0, x_n, padding, kernel_size);
+    });
+  </script>
 </body>
 </html> 
