@@ -157,7 +157,7 @@
         let p = state[`p_${l}`];
         let x_i = state[`x_${l + 1}`];
         ret.push(
-          `<p>nn.ConvTranspose2d(_, _, kernel_size=${k}, stride=${s}, padding=${p}, dilation=1, output_padding=1), # Image size: ${x_i}</p>`
+          `<p>nn.ConvTranspose2d(_, _, kernel_size=${k}, stride=${s}, padding=${p}, output_padding=1), # Image size: ${x_i}</p>`
         );
       }
 
